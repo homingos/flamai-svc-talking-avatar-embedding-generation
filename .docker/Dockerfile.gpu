@@ -8,7 +8,6 @@ ENV CUDA_HOME=/usr/local/cuda \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     TZ=Etc/UTC \
     DEBIAN_FRONTEND=noninteractive \
-    # Ensure a Py version with cu124 wheels
     UV_PYTHON=3.11
 
 RUN apt-get update && apt-get install -y \
@@ -17,21 +16,26 @@ RUN apt-get update && apt-get install -y \
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# Create appuser in builder stage too
+RUN useradd -m -s /bin/bash -u 1000 appuser
+
 # uv runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
+RUN chown appuser:appuser /app
+
+# Switch to appuser for building
+USER appuser
 
 # Copy only files needed to resolve deps (best layer cache)
-COPY pyproject.toml uv.lock README.md ./
+COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 
 # Sync deps into venv using indexes defined in pyproject.toml
-# (No uv add; no CLI index flags)
 RUN uv sync --locked --no-install-project \
     && find /app/.venv -type f -name "*.pyc" -delete \
     && find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + \
     && find /app/.venv -name "*.pyo" -delete
-
 
 # -------------------- Production stage --------------------
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS production
@@ -57,32 +61,39 @@ RUN apt-get update && apt-get install -y libffi8 libssl3 tini tzdata \
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 WORKDIR /app
+RUN chown appuser:appuser /app
 
 # uv runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Bring venv from builder
-COPY --from=builder /app/.venv /app/.venv
+# Switch to appuser before copying venv
+USER appuser
+
+# Bring venv from builder (already owned by appuser)
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
 # Copy manifests so uv can install the project package itself into the venv
-COPY pyproject.toml uv.lock README.md ./
+COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 
 # Copy application code
 COPY --chown=appuser:appuser app.py ./
+COPY --chown=appuser:appuser runpod_app.py ./
 COPY --chown=appuser:appuser src/ ./src/
 
 # Install the project into the existing venv (no dependency resolution changes)
 RUN uv sync --locked
 
-# App dirs
-RUN mkdir -p data/{assets,logs,models,outputs,temp,uploads} \
-    && chown -R appuser:appuser /app
+# App dirs and cache directory
+RUN mkdir -p data/{assets,logs,models,outputs,temp,uploads} && \
+    mkdir -p /app/.cache/huggingface
 
-USER appuser
+# Pre-download all embedding models used by LLM ReRanking service
+RUN python -c "from sentence_transformers import SentenceTransformer; import os; print('Downloading primary embedding model...'); primary_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder='/app/.cache/huggingface'); print('Downloading contextual embedding model...'); contextual_model = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1', cache_folder='/app/.cache/huggingface'); print('Downloading domain embedding model...'); domain_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_folder='/app/.cache/huggingface'); print('All embedding models cached successfully!')"
+
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/status')" || exit 1
 
+
 EXPOSE 8000
-ENTRYPOINT ["tini", "--"]
-CMD ["uv", "run", "python", "runpod_app.py"]
+ENTRYPOINT ["tini", "--", "uv", "run", "python", "runpod_app.py"]
