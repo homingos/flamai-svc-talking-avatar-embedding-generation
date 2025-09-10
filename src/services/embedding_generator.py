@@ -39,8 +39,8 @@ class EmbeddingGenerator:
         self.max_seq_length = max_seq_length
         self.normalize_embeddings = normalize_embeddings
         
-        # Auto-detect device if not specified
-        if device is None:
+        # Auto-detect device if not specified or set to "auto"
+        if device is None or device == "auto":
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
             self.device = device
