@@ -17,6 +17,7 @@ dependencies = [
     "structlog>=23.0.0",
     "torch>=2.8.0",
     "torchvision>=0.23.0",
+    "sentence-transformers>=5.1.0",
 ]
 
 [project.optional-dependencies]
