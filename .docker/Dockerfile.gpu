@@ -85,4 +85,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 8000
 ENTRYPOINT ["tini", "--"]
-CMD ["uv", "run", "python", "app.py"]
+CMD ["uv", "run", "python", "runpod_app.py"]
