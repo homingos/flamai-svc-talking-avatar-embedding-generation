@@ -88,7 +88,7 @@ RUN mkdir -p data/{assets,logs,models,outputs,temp,uploads} && \
     mkdir -p /app/.cache/huggingface
 
 # Pre-download all embedding models used by LLM ReRanking service
-RUN python -c "from sentence_transformers import SentenceTransformer; import os; print('Downloading primary embedding model...'); primary_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder='/app/.cache/huggingface'); print('Downloading contextual embedding model...'); contextual_model = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1', cache_folder='/app/.cache/huggingface'); print('Downloading domain embedding model...'); domain_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_folder='/app/.cache/huggingface'); print('All embedding models cached successfully!')"
+RUN python -c "from sentence_transformers import SentenceTransformer; import os; print('Downloading primary embedding model...'); primary_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder='/app/.cache/huggingface'); print('Primary embedding model cached successfully!')"
 
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
