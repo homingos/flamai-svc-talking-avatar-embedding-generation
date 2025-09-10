@@ -1,0 +1,88 @@
+# Production-optimized multi-stage build with GPU support
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
+
+ENV CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    TZ=Etc/UTC \
+    DEBIAN_FRONTEND=noninteractive \
+    # Ensure a Py version with cu124 wheels
+    UV_PYTHON=3.11
+
+RUN apt-get update && apt-get install -y \
+    build-essential libffi-dev libssl-dev wget curl ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# uv runtime
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+# Copy only files needed to resolve deps (best layer cache)
+COPY pyproject.toml uv.lock README.md ./
+
+# Sync deps into venv using indexes defined in pyproject.toml
+# (No uv add; no CLI index flags)
+RUN uv sync --locked --no-install-project \
+    && find /app/.venv -type f -name "*.pyc" -delete \
+    && find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + \
+    && find /app/.venv -name "*.pyo" -delete
+
+
+# -------------------- Production stage --------------------
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS production
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    CUDA_HOME=/usr/local/cuda \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
+    TZ=Etc/UTC \
+    DEBIAN_FRONTEND=noninteractive \
+    UV_PYTHON=3.11
+
+RUN apt-get update && apt-get install -y libffi8 libssl3 tini tzdata \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -s /bin/bash -u 1000 appuser
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# uv runtime
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Bring venv from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy manifests so uv can install the project package itself into the venv
+COPY pyproject.toml uv.lock README.md ./
+
+# Copy application code
+COPY --chown=appuser:appuser app.py ./
+COPY --chown=appuser:appuser src/ ./src/
+
+# Install the project into the existing venv (no dependency resolution changes)
+RUN uv sync --locked
+
+# App dirs
+RUN mkdir -p data/{assets,logs,models,outputs,temp,uploads} \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/status')" || exit 1
+
+EXPOSE 8000
+ENTRYPOINT ["tini", "--"]
+CMD ["uv", "run", "python", "app.py"]

@@ -1,0 +1,237 @@
+# Application Configuration
+app:
+  name: "fastapi-rest-template"
+  version: "1.0.0"
+  description: "FastAPI AI Server with AI Processing"
+  debug: false
+  environment: "development"  # production, development, testing
+  temp_dir: "runtime/temp"
+  assets_dir: "runtime/assets"
+  max_file_size: "10MB"
+  allowed_file_types: ["jpg", "jpeg", "png", "pdf", "txt"]
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+  workers: 1
+  timeout: 30
+  keep_alive: 2
+
+# Server Manager Configuration
+server_manager:
+  # Application settings
+  app:
+    name: "FastAPI AI Server"
+    version: "1.0.0"
+    description: "AI Processing Server with FastAPI"
+    environment: "production"
+  
+  # Directory configuration
+  directories:
+    temp: "./runtime/temp"
+    outputs: "./runtime/outputs"
+    logs: "./runtime/logs"
+    models: "./runtime/models"
+    uploads: "./runtime/uploads"
+    assets: "./runtime/assets"
+  
+  # Housekeeping configuration
+  housekeeping:
+    enabled: true
+    interval: 600  # 10 minutes
+    log_interval: 300  # 5 minutes
+  
+  # Cleanup configuration
+  cleanup:
+    force_on_startup: true
+    force_on_shutdown: true
+    aggressive_cleanup: true
+    verify_cleanup: true
+  
+  # Graceful shutdown configuration
+  shutdown:
+    timeout: 10.0  # seconds
+    force_exit: true
+    signal_handling: true
+  
+  # Device management
+  device:
+    auto_detect: true
+    preferred_device: "auto"  # auto, cpu, cuda
+    gpu_memory_fraction: 0.8
+    clear_cache_on_shutdown: true
+  
+  # Signal handling
+  signals:
+    sigint: true
+    sigterm: true
+    graceful_shutdown: true
+  
+  # Services configuration
+  services:
+    # Model downloader service
+    model_downloader:
+      enabled: true
+      initialization_timeout: 60.0
+      shutdown_timeout: 10.0
+      dependencies: []
+      config:
+        model_list: []
+        download_path: "./runtime/models"
+        auto_download: false
+        retry_attempts: 3
+        retry_delay: 5.0
+    
+    # Image reader service
+    image_reader:
+      enabled: true
+      initialization_timeout: 5.0
+      shutdown_timeout: 2.0
+      dependencies: []
+      config:
+        supported_formats: ["jpg", "jpeg", "png", "tiff", "bmp", "webp"]
+        max_file_size: "50MB"
+        auto_rotate: true
+        color_space: "RGB"
+    
+    # Image writer service
+    image_writer:
+      enabled: true
+      initialization_timeout: 5.0
+      shutdown_timeout: 2.0
+      dependencies: []
+      config:
+        output_formats: ["jpg", "png", "tiff"]
+        compression_quality: 95
+        max_workers: 4
+        compress_images: true
+        preserve_metadata: true
+
+# Process Manager Configuration (Legacy - for backward compatibility)
+process_manager:
+  # Manager type: stateful or stateless
+  type: "stateful"  # stateful, stateless
+  
+  # Stateful manager settings
+  stateful:
+    max_processes: 1000
+    enable_memory_optimization: true
+  
+  # Stateless manager settings
+  stateless:
+    cache_ttl: 300  # 5 minutes
+    enable_persistence: false
+  
+  # Common settings
+  cleanup:
+    enabled: true
+    interval: 300  # 5 minutes
+    process_ttl: 1800  # 30 minutes
+    orphaned_files_ttl: 3600  # 1 hour
+  
+  # File management
+  file_tracking:
+    enabled: true
+    auto_cleanup: true
+    track_temp_files: true
+    track_output_files: true
+  
+  # Directories
+  directories:
+    temp: "./runtime/temp"
+    outputs: "./runtime/outputs"
+    logs: "./runtime/logs/process_manager"
+  
+  # Performance settings
+  performance:
+    thread_pool_size: 4
+    async_cleanup: true
+    batch_cleanup_size: 100
+  
+  # Monitoring
+  monitoring:
+    enable_metrics: true
+    log_process_events: true
+    health_check_interval: 60
+
+# API Keys Configuration (for external services)
+api_keys:
+  openai: "${OPENAI_API_KEY}"  # Will be replaced with environment variable
+  anthropic: "${ANTHROPIC_API_KEY}"  # Will be replaced with environment variable
+  google: "${GOOGLE_API_KEY}"  # Will be replaced with environment variable
+  custom: "${CUSTOM_API_KEY}"  # Will be replaced with environment variable
+
+# JWT Configuration (for authentication)
+jwt:
+  secret_key: "${JWT_SECRET_KEY}"  # Will be replaced with environment variable
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+  issuer: "fastapi-rest-template"
+
+# CORS Configuration
+cors:
+  allow_origins: ["http://localhost:3000", "http://localhost:8080"]
+  allow_credentials: true
+  allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  allow_headers: ["*"]
+  expose_headers: ["*"]
+
+# Rate Limiting Configuration
+rate_limit:
+  enabled: true
+  requests_per_minute: 60
+  burst_size: 10
+  storage: "memory"  # memory, redis
+
+# Logging Configuration
+logging:
+  level: "info"  # debug, info, warning, error, critical
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - console
+    - file
+  file_path: "runtime/logs/app.log"
+  file_max_size: "50MB"
+  file_backup_count: 5
+  console_format: "%(levelname)s - %(message)s"
+
+# Storage Configuration (for file uploads)
+storage:
+  type: "local"  # local, s3, gcs
+  local_path: "runtime/uploads"
+  max_file_size: "10MB"
+  allowed_extensions: ["jpg", "jpeg", "png", "pdf", "txt", "doc", "docx"]
+
+# Security Configuration
+security:
+  password_min_length: 8
+  password_require_uppercase: true
+  password_require_lowercase: true
+  password_require_numbers: true
+  password_require_special_chars: true
+  session_timeout_minutes: 30
+  max_login_attempts: 5
+  lockout_duration_minutes: 15
+
+# Monitoring and Health Checks
+monitoring:
+  health_check_interval: 30
+  metrics_enabled: true
+  metrics_path: "/metrics"
+  health_check_path: "/health"
+
+# Cache Configuration
+cache:
+  default_ttl: 300  # 5 minutes
+  max_size: 1000
+  backend: "memory"  # memory, redis
+
+# Pagination Configuration
+pagination:
+  default_page_size: 20
+  max_page_size: 100
+  page_size_param: "limit"
+  page_number_param: "offset"

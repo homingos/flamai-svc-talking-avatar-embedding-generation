@@ -1,0 +1,11 @@
+# CODEOWNERS - Code Ownership Configuration
+# This project is maintained by a single GitHub team
+
+# Option 1: Team ownership only
+* @your-org/your-team-name
+
+# Option 2: Team + Individual contributors (uncomment and customize)
+# * @your-org/your-team-name @individual-contributor1 @individual-contributor2
+
+# Option 3: Individual contributors only (uncomment and customize)
+# * @individual-contributor1 @individual-contributor2 @individual-contributor3
