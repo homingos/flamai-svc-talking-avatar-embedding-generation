@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-# from src.api.routes import router
+# Import the new embedding generation API routes
+from src.api.routes import router
 from src.core.server_manager import create_server_manager, ServerManager
 from src.core.process_manager import create_process_manager, ProcessManager
 from src.core.managers import get_server_manager, get_process_manager
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
     global server_manager, process_manager
     
     # Startup logic
-    logger.info(f"Starting {settings.get('app.name', 'FastAPI App')}")
+    logger.info(f"Starting {settings.get('app.name', 'Embedding Generation Service')}")
     
     try:
         # Validate configuration
@@ -47,6 +48,10 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing server manager...")
         server_manager = create_server_manager()
         
+        # Register services
+        logger.info("Registering services...")
+        await _register_services(server_manager)
+        
         # Setup signal handlers for graceful shutdown
         server_manager.setup_signal_handlers()
         
@@ -60,7 +65,7 @@ async def lifespan(app: FastAPI):
         app.state.server_manager = server_manager
         app.state.process_manager = process_manager
         
-        logger.info(f"{settings.get('app.name', 'FastAPI App')} started successfully")
+        logger.info(f"{settings.get('app.name', 'Embedding Generation Service')} started successfully")
         logger.info("All services and components are ready")
         
     except Exception as e:
@@ -71,7 +76,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown logic - this runs when FastAPI is shutting down
-    logger.info(f"Shutting down {settings.get('app.name', 'FastAPI App')}")
+    logger.info(f"Shutting down {settings.get('app.name', 'Embedding Generation Service')}")
     
     try:
         # Shutdown server manager (includes all services and cleanup)
@@ -92,13 +97,70 @@ async def lifespan(app: FastAPI):
         # Don't re-raise the exception to allow FastAPI to complete shutdown
 
 
+async def _register_services(server_manager: ServerManager) -> None:
+    """Register all configured services with the server manager"""
+    from src.api.handlers import EmbeddingService
+    from src.core.server_manager import ModelDownloaderService, ServiceConfig
+    
+    # Get services configuration
+    services_config = settings.get("server_manager.services", {})
+    
+    # Register embedding generation service
+    if "embedding_generation" in services_config:
+        embedding_config = services_config["embedding_generation"]
+        if embedding_config.get("enabled", True):
+            logger.info("Registering embedding generation service...")
+            
+            service_config = ServiceConfig(
+                name="embedding_generation",
+                enabled=embedding_config.get("enabled", True),
+                initialization_timeout=embedding_config.get("initialization_timeout", 120.0),
+                shutdown_timeout=embedding_config.get("shutdown_timeout", 10.0),
+                dependencies=embedding_config.get("dependencies", []),
+                config=embedding_config.get("config", {})
+            )
+            
+            # Get device from server manager
+            device = server_manager.device_manager.get_device()
+            
+            # Create and register the service
+            embedding_service = EmbeddingService(service_config, device)
+            server_manager.register_service(embedding_service)
+            logger.info("Embedding generation service registered successfully")
+    
+    # Register model downloader service
+    if "model_downloader" in services_config:
+        downloader_config = services_config["model_downloader"]
+        if downloader_config.get("enabled", True):
+            logger.info("Registering model downloader service...")
+            
+            service_config = ServiceConfig(
+                name="model_downloader",
+                enabled=downloader_config.get("enabled", True),
+                initialization_timeout=downloader_config.get("initialization_timeout", 60.0),
+                shutdown_timeout=downloader_config.get("shutdown_timeout", 10.0),
+                dependencies=downloader_config.get("dependencies", []),
+                config=downloader_config.get("config", {})
+            )
+            
+            # Create and register the service
+            model_downloader_service = ModelDownloaderService(service_config)
+            server_manager.register_service(model_downloader_service)
+            logger.info("Model downloader service registered successfully")
+    
+    logger.info(f"Registered {len(server_manager.services)} services")
+
+
 # Create FastAPI application with lifespan manager
 app = FastAPI(
-    title=settings.get("app.name", "FastAPI REST Template"),
-    description=settings.get("app.description", "FastAPI REST API Template"),
+    title=settings.get("app.name", "Embedding Generation Service"),
+    description=settings.get("app.description", "FastAPI service for generating text embeddings using SentenceTransformers"),
     version=settings.get("app.version", "1.0.0"),
     lifespan=lifespan,
-    debug=settings.get("app.debug", False)
+    debug=settings.get("app.debug", False),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # Setup CORS middleware
@@ -114,17 +176,48 @@ if cors_config:
     )
 
 # Include API routes
-# app.include_router(router)
+app.include_router(router)
 
+# Root endpoint
+@app.get("/")
+async def root():
+    """
+    Root endpoint providing basic service information
+    """
+    return {
+        "service": "Embedding Generation Service",
+        "version": settings.get("app.version", "1.0.0"),
+        "description": "FastAPI service for generating text embeddings using SentenceTransformers",
+        "docs": "/docs",
+        "health": "/api/v1/health",
+        "status": "/status"
+    }
+
+# Basic status endpoint (legacy compatibility)
 @app.get("/status")
 async def get_status(request: Request):
+    """
+    Basic status endpoint for compatibility
+    """
     server_mgr = get_server_manager(request)
     process_mgr = get_process_manager(request)
     
     return {
+        "service": "Embedding Generation Service",
+        "version": settings.get("app.version", "1.0.0"),
         "server_status": server_mgr.get_server_status() if server_mgr else None,
-        "process_metrics": process_mgr.get_metrics() if process_mgr else None
+        "process_metrics": process_mgr.get_metrics() if process_mgr else None,
+        "timestamp": "2024-01-15T10:30:00Z"
     }
+
+# Health endpoint (redirect to API health check)
+@app.get("/health")
+async def health_redirect():
+    """
+    Redirect to the comprehensive health check endpoint
+    """
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/api/v1/health", status_code=302)
 
 # Custom shutdown handler for uvicorn
 def handle_exit(sig, frame):
@@ -137,7 +230,7 @@ def handle_exit(sig, frame):
 
 # Run the application if executed directly
 if __name__ == "__main__":
-    logger.info("Starting FastAPI Server...")
+    logger.info("Starting Embedding Generation Service...")
     
     # Get server configuration from settings
     server_config = settings.get_server_config()
