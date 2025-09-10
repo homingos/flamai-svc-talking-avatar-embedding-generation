@@ -1,8 +1,8 @@
 # Application Configuration
 app:
-  name: "fastapi-rest-template"
+  name: "Embedding Generation Service"
   version: "1.0.0"
-  description: "FastAPI AI Server with AI Processing"
+  description: "FastAPI service for generating text embeddings using SentenceTransformers"
   debug: false
   environment: "development"  # production, development, testing
   temp_dir: "runtime/temp"
@@ -19,13 +19,72 @@ server:
   timeout: 30
   keep_alive: 2
 
+# Embedding Generation Configuration
+embedding_generation:
+  # Model configuration
+  model:
+    name: "all-MiniLM-L6-v2"  # SentenceTransformer model name
+    max_seq_length: 512  # Maximum sequence length for tokenization
+    normalize_embeddings: true  # Whether to normalize embeddings to unit vectors
+  
+  # Device configuration
+  device:
+    auto_detect: true  # Auto-detect best available device
+    preferred_device: "auto"  # auto, cpu, cuda
+    gpu_memory_fraction: 0.8  # Fraction of GPU memory to use
+    clear_cache_on_shutdown: true  # Clear GPU cache on shutdown
+  
+  # Processing configuration
+  processing:
+    default_batch_size: 32  # Default batch size for processing
+    max_batch_size: 128  # Maximum allowed batch size
+    max_parallel_workers: 16  # Maximum number of parallel workers
+    default_parallel_workers: 4  # Default number of parallel workers
+    max_texts_per_request: 10000  # Maximum texts per parallel request
+    max_texts_per_batch: 1000  # Maximum texts per batch request
+    max_text_length: 10000  # Maximum length of individual text
+  
+  # Performance optimization
+  optimization:
+    enable_half_precision: true  # Enable half precision for GPU
+    enable_cudnn_benchmark: true  # Enable cuDNN benchmark
+    enable_mixed_precision: true  # Enable mixed precision training
+    lazy_load_optional: true  # Lazy load optional components
+  
+  # Request validation
+  validation:
+    min_text_length: 1  # Minimum text length
+    max_text_length: 10000  # Maximum text length
+    min_batch_size: 1  # Minimum batch size
+    max_batch_size: 128  # Maximum batch size
+    min_parallel_workers: 1  # Minimum parallel workers
+    max_parallel_workers: 16  # Maximum parallel workers
+    min_texts_per_request: 1  # Minimum texts per request
+    max_texts_per_parallel: 10000  # Maximum texts for parallel processing
+    max_texts_per_batch: 1000  # Maximum texts for batch processing
+  
+  # Timeout configuration
+  timeouts:
+    model_initialization: 120.0  # Model initialization timeout (seconds)
+    single_embedding: 30.0  # Single embedding timeout (seconds)
+    batch_embedding: 300.0  # Batch embedding timeout (seconds)
+    parallel_embedding: 600.0  # Parallel embedding timeout (seconds)
+    health_check: 10.0  # Health check timeout (seconds)
+  
+  # Memory management
+  memory:
+    enable_gpu_cache_clearing: true  # Enable automatic GPU cache clearing
+    cache_clear_interval: 300  # Cache clear interval (seconds)
+    max_memory_usage: 0.9  # Maximum memory usage fraction
+    enable_garbage_collection: true  # Enable automatic garbage collection
+
 # Server Manager Configuration
 server_manager:
   # Application settings
   app:
-    name: "FastAPI AI Server"
+    name: "Embedding Generation Service"
     version: "1.0.0"
-    description: "AI Processing Server with FastAPI"
+    description: "AI Processing Server with FastAPI for Embedding Generation"
     environment: "production"
   
   # Directory configuration
@@ -71,6 +130,23 @@ server_manager:
   
   # Services configuration
   services:
+    # Embedding generation service
+    embedding_generation:
+      enabled: true
+      initialization_timeout: 120.0
+      shutdown_timeout: 10.0
+      dependencies: []
+      config:
+        model_name: "all-MiniLM-L6-v2"
+        device: "auto"
+        batch_size: 32
+        max_seq_length: 512
+        normalize_embeddings: true
+        enable_half_precision: true
+        enable_cudnn_benchmark: true
+        enable_mixed_precision: true
+        lazy_load_optional: true
+    
     # Model downloader service
     model_downloader:
       enabled: true
@@ -78,15 +154,15 @@ server_manager:
       shutdown_timeout: 10.0
       dependencies: []
       config:
-        model_list: []
+        model_list: ["all-MiniLM-L6-v2"]
         download_path: "./runtime/models"
-        auto_download: false
+        auto_download: true
         retry_attempts: 3
         retry_delay: 5.0
     
     # Image reader service
     image_reader:
-      enabled: true
+      enabled: false  # Disabled for embedding service
       initialization_timeout: 5.0
       shutdown_timeout: 2.0
       dependencies: []
@@ -98,7 +174,7 @@ server_manager:
     
     # Image writer service
     image_writer:
-      enabled: true
+      enabled: false  # Disabled for embedding service
       initialization_timeout: 5.0
       shutdown_timeout: 2.0
       dependencies: []
@@ -169,7 +245,7 @@ jwt:
   algorithm: "HS256"
   access_token_expire_minutes: 30
   refresh_token_expire_days: 7
-  issuer: "fastapi-rest-template"
+  issuer: "embedding-generation-service"
 
 # CORS Configuration
 cors:
