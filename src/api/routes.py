@@ -12,6 +12,7 @@ from src.api.schema import (
     SingleEmbeddingRequest, SingleEmbeddingResponse,
     BatchEmbeddingRequest, BatchEmbeddingResponse,
     ParallelEmbeddingRequest, ParallelEmbeddingResponse,
+    CSVEmbeddingRequest, CSVEmbeddingResponse,
     ModelInfoResponse, HealthCheckResponse, ErrorResponse
 )
 from src.utils.resources.logger import logger
@@ -169,7 +170,71 @@ async def generate_parallel_embeddings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Parallel embedding failed: {str(e)}"
         )
-
+        
+@router.post(
+    "/embedding/csv",
+    response_model=CSVEmbeddingResponse,
+    summary="Generate Embeddings from CSV",
+    description="Download a CSV file from URL and generate embeddings for all text content",
+    responses={
+        200: {"description": "CSV embeddings generated successfully"},
+        400: {"description": "Invalid request parameters or CSV processing failed"},
+        503: {"description": "Service not available"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def generate_embeddings_from_csv(
+    request_data: CSVEmbeddingRequest,
+    request: Request
+) -> CSVEmbeddingResponse:
+    """
+    Download a CSV file from the provided URL and generate embeddings for all text content.
+    
+    This endpoint combines CSV file processing with embedding generation:
+    1. Downloads the CSV file from the provided URL
+    2. Extracts text content from specified or all columns
+    3. Combines or separates column data based on configuration
+    4. Generates embeddings using optimized batch processing
+    5. Returns embeddings with detailed metadata about the CSV processing
+    
+    Args:
+        request_data: CSVEmbeddingRequest containing:
+            - url: URL to the CSV file
+            - text_columns: Specific columns to process (None = all columns)
+            - combine_columns: Whether to combine multiple columns per row
+            - separator: Separator when combining columns
+            - batch_size: Batch size for embedding generation
+            - normalize: Whether to normalize embeddings
+            - skip_empty: Whether to skip empty cells/rows
+            - max_texts: Maximum number of texts to process
+        request: FastAPI request object
+    
+    Returns:
+        CSVEmbeddingResponse: CSV embedding results with metadata including:
+        - Generated embeddings
+        - Processing statistics
+        - CSV file information
+        - Performance metrics
+        
+    Raises:
+        HTTPException: For various error conditions including:
+        - Invalid or inaccessible CSV URL
+        - CSV parsing errors
+        - Empty or invalid CSV content
+        - Service unavailability
+        - Processing failures
+    """
+    try:
+        logger.info(f"CSV embedding request received for URL: {request_data.url}")
+        return await embedding_handler.generate_embeddings_from_csv(request_data, request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in CSV embedding: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CSV embedding failed: {str(e)}"
+        )
 
 @router.get(
     "/model/info",

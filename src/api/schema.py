@@ -117,6 +117,63 @@ class ParallelEmbeddingRequest(BaseModel):
         }
 
 
+class CSVEmbeddingRequest(BaseModel):
+    """Request schema for CSV file embedding generation"""
+    url: str = Field(
+        ..., 
+        description="URL to the CSV file",
+        example="https://example.com/data.csv"
+    )
+    text_columns: Optional[List[str]] = Field(
+        default=None,
+        description="Specific columns to extract text from (None = all columns)",
+        example=["title", "description", "content"]
+    )
+    combine_columns: Optional[bool] = Field(
+        default=True,
+        description="Whether to combine multiple columns into single text per row"
+    )
+    separator: Optional[str] = Field(
+        default=" ",
+        description="Separator when combining columns",
+        example=" - "
+    )
+    batch_size: Optional[int] = Field(
+        default=32,
+        description="Batch size for processing",
+        ge=1,
+        le=128
+    )
+    normalize: Optional[bool] = Field(
+        default=True,
+        description="Whether to normalize embeddings to unit vectors"
+    )
+    skip_empty: Optional[bool] = Field(
+        default=True,
+        description="Whether to skip empty rows/cells"
+    )
+    max_texts: Optional[int] = Field(
+        default=None,
+        description="Maximum number of texts to process (None = all)",
+        ge=1,
+        le=10000
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url": "https://example.com/sample_data.csv",
+                "text_columns": ["title", "description"],
+                "combine_columns": True,
+                "separator": " - ",
+                "batch_size": 32,
+                "normalize": True,
+                "skip_empty": True,
+                "max_texts": 1000
+            }
+        }
+
+
 # Response Schemas
 class SingleEmbeddingResponse(BaseModel):
     """Response schema for single text embedding generation"""
@@ -201,6 +258,45 @@ class ParallelEmbeddingResponse(BaseModel):
                 "normalized": True,
                 "embeddings": [[0.1, -0.2, 0.3], [0.2, -0.1, 0.4]],
                 "message": "Parallel embeddings generated successfully"
+            }
+        }
+
+
+class CSVEmbeddingResponse(BaseModel):
+    """Response schema for CSV file embedding generation"""
+    success: bool = Field(..., description="Whether the operation was successful")
+    total_texts: int = Field(..., description="Total number of input texts")
+    embeddings_generated: int = Field(..., description="Number of embeddings generated")
+    embedding_dimension: int = Field(..., description="Dimension of each embedding vector")
+    processing_time: float = Field(..., description="Total processing time in seconds")
+    batch_size: int = Field(..., description="Batch size used for processing")
+    normalized: bool = Field(..., description="Whether embeddings were normalized")
+    embeddings: List[List[float]] = Field(..., description="List of generated embedding vectors")
+    csv_info: Dict[str, Any] = Field(..., description="Information about the processed CSV")
+    message: Optional[str] = Field(default=None, description="Additional information")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "total_texts": 100,
+                "embeddings_generated": 100,
+                "embedding_dimension": 384,
+                "processing_time": 2.456,
+                "batch_size": 32,
+                "normalized": True,
+                "embeddings": [
+                    [0.1, -0.2, 0.3, 0.4, -0.5],
+                    [0.2, -0.1, 0.4, 0.3, -0.6]
+                ],
+                "csv_info": {
+                    "source_url": "https://example.com/data.csv",
+                    "total_rows": 50,
+                    "columns_processed": ["title", "description"],
+                    "download_time": 0.234,
+                    "parsing_time": 0.123
+                },
+                "message": "CSV embeddings generated successfully"
             }
         }
 

@@ -20,11 +20,13 @@ from src.api.schema import (
     BatchEmbeddingRequest as BatchEmbeddingRequestSchema,
     ParallelEmbeddingRequest as ParallelEmbeddingRequestSchema,
     SingleEmbeddingResponse, BatchEmbeddingResponse, ParallelEmbeddingResponse,
+    CSVEmbeddingRequest, CSVEmbeddingResponse,
     ModelInfoResponse, HealthCheckResponse as HealthCheckResponseSchema,
     ErrorResponse
 )
 from src.utils.resources.logger import logger
 from src.utils.config.settings import settings
+from src.utils.io.reader import CSVTextReader
 
 
 class EmbeddingService(AIService):
@@ -215,6 +217,26 @@ class EmbeddingHandler:
             raise HTTPException(
                 status_code=400,
                 detail="No valid texts found in input list"
+            )
+    def _validate_csv_request(self, request_data: CSVEmbeddingRequest) -> None:
+        """Validate CSV embedding request parameters"""
+        if not request_data.url or not request_data.url.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="CSV URL cannot be empty"
+            )
+        
+        # Basic URL validation
+        if not request_data.url.startswith(('http://', 'https://')):
+            raise HTTPException(
+                status_code=400,
+                detail="URL must start with http:// or https://"
+            )
+        
+        if request_data.max_texts and request_data.max_texts > 10000:
+            raise HTTPException(
+                status_code=400,
+                detail="max_texts cannot exceed 10000"
             )
     
     async def generate_single_embedding(
@@ -457,6 +479,133 @@ class EmbeddingHandler:
             raise HTTPException(
                 status_code=500,
                 detail=f"Internal server error: {str(e)}"
+            )
+    async def generate_embeddings_from_csv(
+        self, 
+        request_data: CSVEmbeddingRequest,
+        request: Request
+    ) -> CSVEmbeddingResponse:
+        """
+        Handle CSV file embedding generation request
+        
+        Args:
+            request_data: The CSV embedding request data
+            request: FastAPI request object
+            
+        Returns:
+            CSVEmbeddingResponse with embedding results
+        """
+        start_time = time.time()
+        request_id = f"csv_req_{int(time.time() * 1000)}"
+        
+        try:
+            # Validate request parameters
+            self._validate_csv_request(request_data)
+            
+            # Get the embedding generation service from core system
+            embedding_service = self._get_embedding_service(request)
+            
+            logger.info(f"Processing CSV embedding request {request_id}")
+            logger.info(f"URL: {request_data.url}")
+            logger.info(f"Text columns: {request_data.text_columns}")
+            logger.info(f"Combine columns: {request_data.combine_columns}")
+            logger.info(f"Batch size: {request_data.batch_size}")
+            
+            # Step 1: Download and read CSV file
+            csv_reader = CSVTextReader()
+            csv_read_result = csv_reader.read_csv_from_url(
+                url=request_data.url,
+                text_columns=request_data.text_columns,
+                combine_columns=request_data.combine_columns,
+                separator=request_data.separator,
+                skip_empty=request_data.skip_empty
+            )
+            
+            # Check if CSV reading was successful
+            if not csv_read_result.success:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to read CSV file: {csv_read_result.message}"
+                )
+            
+            # Get texts from CSV
+            texts = csv_read_result.texts
+            
+            # Apply max_texts limit if specified
+            if request_data.max_texts and len(texts) > request_data.max_texts:
+                texts = texts[:request_data.max_texts]
+                logger.info(f"Limited texts to {request_data.max_texts} items")
+            
+            # Check if we have any texts to process
+            if not texts:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No texts found in CSV file after processing"
+                )
+            
+            logger.info(f"Successfully extracted {len(texts)} texts from CSV")
+            
+            # Step 2: Generate embeddings using existing batch processing
+            embeddings = embedding_service.embedding_generator.generate_embeddings_batch(
+                texts,
+                batch_size=request_data.batch_size
+            )
+            
+            # Calculate total processing time
+            processing_time = time.time() - start_time
+            
+            # Update metrics
+            self.processing_metrics.total_requests += 1
+            self.processing_metrics.successful_requests += 1
+            self.processing_metrics.last_request_time = datetime.now()
+            
+            # Calculate average processing time
+            if self.processing_metrics.total_requests > 0:
+                total_time = (self.processing_metrics.average_processing_time * 
+                            (self.processing_metrics.total_requests - 1) + processing_time)
+                self.processing_metrics.average_processing_time = total_time / self.processing_metrics.total_requests
+            
+            # Convert embeddings to list format
+            embeddings_list = [embedding.tolist() for embedding in embeddings]
+            
+            # Prepare CSV information
+            csv_info = {
+                "source_url": request_data.url,
+                "total_rows": csv_read_result.total_rows,
+                "columns_processed": csv_read_result.columns_processed,
+                "download_time": csv_read_result.processing_time,
+                "texts_extracted": len(csv_read_result.texts),
+                "texts_processed": len(texts)
+            }
+            
+            # Create response
+            response = CSVEmbeddingResponse(
+                success=True,
+                total_texts=len(texts),
+                embeddings_generated=len(embeddings),
+                embedding_dimension=len(embeddings[0]) if embeddings else 0,
+                processing_time=processing_time,
+                batch_size=request_data.batch_size,
+                normalized=request_data.normalize,
+                embeddings=embeddings_list,
+                csv_info=csv_info,
+                message=f"Successfully generated embeddings for {len(embeddings)} texts from CSV"
+            )
+            
+            logger.info(f"CSV embedding request {request_id} completed successfully in {processing_time:.3f}s")
+            return response
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions
+            self.processing_metrics.failed_requests += 1
+            raise
+        except Exception as e:
+            # Handle unexpected errors
+            self.processing_metrics.failed_requests += 1
+            logger.error(f"Unexpected error in CSV embedding request {request_id}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Internal server error during CSV processing: {str(e)}"
             )
     
     async def get_model_info(self, request: Request) -> ModelInfoResponse:
